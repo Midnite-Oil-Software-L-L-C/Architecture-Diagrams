@@ -34,6 +34,7 @@ Space War is a competitive two-player game where each player controls a spaceshi
 - Score tracking and time-based rounds
 - Player-specific collision layers for projectile targeting
 - Visual feedback with engine exhaust effects
+- **Black Hole gravity well** - Environmental hazard with attraction force and instant destruction
 
 ## 🏗 Architecture
 
@@ -65,6 +66,8 @@ graph TB
         SWPlayer[SpaceWarPlayer]
         Fighter[Fighter Controller]
         Projectile[PlayerProjectile]
+        GravityWell[GravityWell / Black Hole]
+        Attractable[Attractable Component]
         GameUI[SpaceWarGameUI]
         SessionInit[SpaceWarGameSessionInitializer]
     end
@@ -86,8 +89,12 @@ graph TB
     SWGameMgr --> PlayerRegistry
     SWGameMgr --> EventBus
     SWPlayer --> Fighter
+    SWPlayer --> Attractable
     SWPlayer --> EventBus
     Fighter --> Projectile
+    Projectile --> Attractable
+    GravityWell -.attracts.-> Attractable
+    GravityWell -.destroys.-> SWPlayer
     GameUI --> SWGameMgr
     GameUI --> EventBus
     
@@ -95,6 +102,8 @@ graph TB
     style SWPlayer fill:#e1f5ff
     style Fighter fill:#e1f5ff
     style Projectile fill:#e1f5ff
+    style GravityWell fill:#ffe1e1
+    style Attractable fill:#ffe1e1
     style GameUI fill:#e1f5ff
     style SessionInit fill:#e1f5ff
 ```
@@ -107,6 +116,7 @@ graph TD
         GM[SpaceWarGameManager<br/>NetworkBehaviour]
         PR[PlayerRegistry<br/>Singleton]
         Canvas[Game UI Canvas]
+        BH[Black Hole<br/>NetworkObject]
     end
     
     subgraph "Network Player Prefab"
@@ -114,6 +124,7 @@ graph TD
         RB[Rigidbody2D]
         PI[PlayerInput]
         SW[ScreenWrapper]
+        ATT[Attractable<br/>NetworkBehaviour]
         FV[FighterVisuals<br/>Child GameObject]
         FC[Fighter<br/>NetworkBehaviour]
     end
@@ -122,26 +133,46 @@ graph TD
         PP[PlayerProjectile<br/>NetworkBehaviour]
         PRB[Rigidbody2D]
         PC[Collider2D]
+        PATT[Attractable]
+    end
+    
+    subgraph "Black Hole Prefab"
+        GW[GravityWell<br/>NetworkBehaviour]
+        GWC[CircleCollider2D<br/>Trigger]
+        GWRB[Rigidbody2D<br/>Kinematic]
     end
     
     GM --> PR
     GM -.manages.-> NP
     Canvas --> GM
+    BH --> GW
     
     NP --> RB
     NP --> PI
     NP --> SW
+    NP --> ATT
     NP --> FV
     FV --> FC
     FC -.spawns.-> PP
     
     PP --> PRB
     PP --> PC
+    PP --> PATT
+    
+    GW --> GWC
+    GW --> GWRB
+    GW -.attracts.-> ATT
+    GW -.attracts.-> PATT
+    GWC -.collision destroys.-> NP
+    GWC -.collision destroys.-> PP
     
     style NP fill:#d4edda
     style GM fill:#d4edda
     style FC fill:#fff3cd
     style PP fill:#fff3cd
+    style GW fill:#ffe1e1
+    style ATT fill:#ffe1e1
+    style PATT fill:#ffe1e1
 ```
 
 ### Network Architecture
@@ -356,6 +387,7 @@ Space War customizes the framework by:
 - Implements `IDestroyable` interface for combat interactions
 - Controls player visibility during different game states
 - Integrates with `ScreenWrapper` for edge-of-screen teleportation
+- **Includes `Attractable` component** for gravity well interactions
 
 ### 3. Fighter Control System
 
@@ -374,13 +406,33 @@ Space War customizes the framework by:
 - Implements collision with `IDestroyable` targets
 - Automatic despawn after lifetime expires
 - Server-authoritative hit detection
+- **Includes `Attractable` component** for gravity well interactions
 
 **`IDestroyable` Interface**
-- Contract for objects that can be destroyed by projectiles
+- Contract for objects that can be destroyed by projectiles or environmental hazards
 - Implemented by `SpaceWarPlayer`
 - Triggers score updates and round progression
 
-### 5. UI System
+### 5. Environmental Hazard System
+
+**`GravityWell` (Black Hole)**
+- Server-authoritative `NetworkBehaviour` that provides environmental challenge
+- Applies radial gravitational force to nearby objects with `Attractable` component
+- Uses layer mask filtering to determine affected objects (Player 1, Player 2, projectiles)
+- Maintains a registry of all `Attractable` objects in range
+- Calculates distance-based force falloff for realistic physics
+- Trigger collider instantly destroys any `IDestroyable` object on contact
+- Visual rotation effect for aesthetic feedback
+- Spawned as a `NetworkObject` in the scene at game start
+
+**`Attractable`**
+- `NetworkBehaviour` component that marks objects as affected by gravity wells
+- Automatically registers/unregisters with nearby `GravityWell` instances on spawn/despawn
+- Applies gravitational force to `Rigidbody2D` when within gravity well radius
+- Uses server RPCs to coordinate registration with gravity wells
+- Attached to both players and projectiles
+
+### 6. UI System
 
 **`SpaceWarGameUI`**
 - Displays player names and scores synchronized from `NetworkList`
@@ -389,7 +441,7 @@ Space War customizes the framework by:
 - Game over panel with rematch and exit options
 - "Get Ready" text during countdown phases
 
-### 6. Supporting Systems
+### 7. Supporting Systems
 
 **`ScreenWrapper`**
 - Wraps objects that exit screen boundaries to opposite side
@@ -412,7 +464,8 @@ Assets/_spacewar/
 ├── Art/                                    # Sprites and visual assets
 │   ├── fighter1.png, fighter2.png, fighter3.png
 │   ├── spacebackground1.png, spacebackground2.png
-│   └── splashscreen.png
+│   ├── splashscreen.png
+│   └── Black Hole.png                     # Black hole sprite
 ├── Fonts/                                  # Custom fonts (Arcade font)
 ├── Materials/                              # Rendering materials
 │   ├── Space Background 1.mat
@@ -421,6 +474,7 @@ Assets/_spacewar/
 ├── Prefabs/                                # Network and game prefabs
 │   ├── SpaceWar Player.prefab             # Main network player prefab
 │   ├── Projectile.prefab                  # Networked projectile
+│   ├── Black Hole.prefab                  # Networked gravity well hazard
 │   ├── Explosion.prefab                   # Destruction effect
 │   ├── EngineExhaust.prefab              # Thrust particle effect
 │   └── fighter1_0.prefab, fighter2_0.prefab, fighter3_0.prefab
@@ -434,6 +488,8 @@ Assets/_spacewar/
 │   ├── Fighter.cs                         # Ship controls and combat
 │   ├── FighterVisuals.cs                  # Visual management
 │   ├── PlayerProjectile.cs                # Projectile behavior
+│   ├── GravityWell.cs                     # Black hole physics and destruction
+│   ├── Attractable.cs                     # Gravity-affected objects
 │   ├── SpaceWarGameUI.cs                  # UI management
 │   ├── SpaceWarGameSessionInitializer.cs  # Session setup
 │   ├── ScreenWrapper.cs                   # Screen edge wrapping
@@ -543,6 +599,43 @@ public class PlayerProjectile : NetworkBehaviour
 - IDestroyable interface invocation
 - Automatic cleanup after lifetime
 
+### GravityWell
+
+```csharp
+public class GravityWell : NetworkBehaviour
+{
+    public void RegisterAttractable(Attractable attractable)
+    void UnregisterAttractable(Attractable attractable)
+    void Update() // Applies gravity to registered objects
+    void OnTriggerEnter2D(Collider2D other) // Destroys on contact
+}
+```
+
+**Key Responsibilities:**
+- Server-authoritative gravitational physics simulation
+- Registry management of Attractable objects
+- Distance-based force calculation with falloff
+- Instant destruction on trigger collision
+- Layer mask filtering for selective attraction
+- Visual rotation for aesthetic effect
+
+### Attractable
+
+```csharp
+public class Attractable : NetworkBehaviour
+{
+    public void Attract(float gravityStrength, float gravityRadius, Vector3 gravityWellPosition)
+    void RegisterWithGravityWellServerRpc(ulong gravityWellNetworkObjectId)
+    void UnregisterFromGravityWellServerRpc(ulong gravityWellNetworkObjectId)
+}
+```
+
+**Key Responsibilities:**
+- Automatic registration/unregistration with gravity wells
+- Force application to Rigidbody2D components
+- Server RPC coordination for network synchronization
+- Fallback position-based movement if no Rigidbody2D
+
 ## 🌐 Network Synchronization
 
 ### NetworkVariables
@@ -553,6 +646,8 @@ public class PlayerProjectile : NetworkBehaviour
 
 ### Server RPCs
 - `Fighter.FireProjectileServerRpc()` - Client requests projectile spawn from server
+- `Attractable.RegisterWithGravityWellServerRpc()` - Client registers with gravity well
+- `Attractable.UnregisterFromGravityWellServerRpc()` - Client unregisters from gravity well
 - `SpaceWarGameManager.RematchServerRpc()` - Client requests game restart
 - `GameManager.ExitGameServerRpc()` - Client requests session cleanup
 
@@ -562,6 +657,7 @@ public class PlayerProjectile : NetworkBehaviour
 ### Network Objects
 - **SpaceWar Player.prefab** - Player NetworkObject (spawned by framework)
 - **Projectile.prefab** - Projectile NetworkObject (spawned by Fighter on server)
+- **Black Hole.prefab** - Environmental hazard NetworkObject (placed in scene)
 - **Explosion.prefab** - Explosion NetworkObject (spawned on player death)
 
 ## 🎮 How to Play
@@ -578,15 +674,18 @@ public class PlayerProjectile : NetworkBehaviour
 3. Wait for a second player to join
 4. Game starts with a 3-second countdown
 5. Maneuver your ship and shoot the opponent
-6. Each successful hit scores a point for the shooter
-7. When hit, players respawn after a 3-second countdown
-8. Game ends when the 120-second timer expires
-9. Choose to rematch or return to lobby
+6. **Avoid the Black Hole** - It will pull you in and destroy you on contact
+7. Each successful hit scores a point for the shooter
+8. When hit, players respawn after a 3-second countdown
+9. Game ends when the 120-second timer expires
+10. Choose to rematch or return to lobby
 
 ### Game Mechanics
 - **Physics-Based Movement**: Ships maintain momentum; use rotation and thrust carefully
 - **Screen Wrapping**: Exit one side of the screen to appear on the opposite side
 - **Collision Layers**: Your projectiles cannot hit you, only your opponent
+- **Black Hole Gravity**: The black hole pulls both ships and projectiles toward it with distance-based force
+- **Environmental Hazard**: Contact with the black hole results in instant destruction
 - **Time Limit**: 120 seconds per match
 - **Round System**: Each player death triggers a round reset with countdown
 
@@ -610,6 +709,7 @@ The game uses Unity layers for collision filtering:
 - **Player 2**: Layer for second player's ship
 - **Player 1 Projectile**: Layer for first player's shots (collides with Player 2 only)
 - **Player 2 Projectile**: Layer for second player's shots (collides with Player 1 only)
+- **Gravity Well**: Layer for the black hole environmental hazard
 
 This prevents self-damage and ensures projectiles only hit opponents.
 
@@ -618,6 +718,8 @@ This prevents self-damage and ensures projectiles only hit opponents.
 All critical game logic runs on the server:
 - Projectile spawning
 - Collision detection
+- Gravitational force application
+- Black hole destruction triggers
 - Score updates
 - Game state transitions
 - Timer countdown
@@ -628,10 +730,11 @@ Clients send input and receive state updates, ensuring fair gameplay.
 
 - **Inheritance**: Extending framework base classes (`GameManager`, `NetworkPlayer`, `GameSessionInitializer`)
 - **Interface Segregation**: `IDestroyable` for combat interactions
-- **Observer Pattern**: `EventBus` for decoupled communication
+- **Observer Pattern**: `EventBus` for decoupled communication and `Attractable` registration with `GravityWell`
 - **Singleton Pattern**: Framework managers (`PlayerRegistry`, `SessionManager`, `EventBus`)
 - **State Machine**: Game state enumeration with transition logic
 - **Component Pattern**: Modular components on network prefabs
+- **Registry Pattern**: `GravityWell` maintains list of `Attractable` objects for efficient physics updates
 
 ### Future Enhancements
 
@@ -639,6 +742,8 @@ Potential improvements:
 - Power-ups (shields, rapid fire, speed boost)
 - Multiple game modes (elimination, king of the hill)
 - More than 2 players (requires lobby system adjustment)
+- **Multiple black holes** or dynamically spawning gravity wells
+- **Adjustable gravity well strength** as a match modifier
 - Asteroid obstacles in the play area
 - Progressive difficulty (increasing speed/fire rate)
 - Persistent player statistics
