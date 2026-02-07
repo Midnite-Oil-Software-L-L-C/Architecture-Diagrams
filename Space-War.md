@@ -6,6 +6,8 @@
 
 A real-time multiplayer space combat game built with Unity 6 and the **Midnite Oil Software LLD Multiplayer Boilerplate**. Two players battle in a classic Asteroids-style arena with physics-based ship movement, projectile combat, and screen wrapping mechanics.
 
+Built as part of a [Unity game dev tutorial](https://www.youtube.com/watch?v=rSoqOaSNq0Q) showing how to use the [Midnite Oil Software LLC Multiplayer Boilerplate Template package](https://github.com/Midnite-Oil-Software-L-L-C/unity_packages/tree/main/Multiplayer). 
+
 ## 📖 Table of Contents
 
 - [Game Overview](#-game-overview)
