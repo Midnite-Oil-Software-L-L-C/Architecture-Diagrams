@@ -229,3 +229,4 @@ For detailed information on specific systems, see:
 - [Tech Tree System Architecture](./Tech-Tree-Architecture.md)
 - [Fog of War System Architecture](./Fog-Of-War-Architecture.md)
 - [UI System Architecture](./UI-System-Architecture.md)
+- [Camera Control Architecture](./Camera-Control-Architecture.md)
